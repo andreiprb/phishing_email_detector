@@ -15,12 +15,12 @@ print(f"Using device: {device}")
 # Load the dataset
 
 emails = [
-    ".idea/dataSources/CEAS_08.csv",
-    ".idea/dataSources/Nazario_5.csv",
-    ".idea/dataSources/Nazario.csv",
-    ".idea/dataSources/Nigerian_5.csv",
-    ".idea/dataSources/Nigerian_Fraud.csv",
-    ".idea/dataSources/SpamAssasin.csv"
+    "dataSources/CEAS_08.csv",
+    "dataSources/Nazario_5.csv",
+    "dataSources/Nazario.csv",
+    "dataSources/Nigerian_5.csv",
+    "dataSources/Nigerian_Fraud.csv",
+    "dataSources/SpamAssasin.csv"
 ]
 
 label_positions = [
