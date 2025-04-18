@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from torchvision import transforms
 from torchinfo import summary
 import os
+
 os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 
 import matplotlib.pyplot as plt
@@ -15,12 +16,12 @@ print(f"Using device: {device}")
 # Load the dataset
 
 emails = [
-    "dataSources/CEAS_08.csv",
-    "dataSources/Nazario_5.csv",
-    "dataSources/Nazario.csv",
-    "dataSources/Nigerian_5.csv",
-    "dataSources/Nigerian_Fraud.csv",
-    "dataSources/SpamAssasin.csv"
+    "data/CEAS_08.csv",
+    "data/Nazario_5.csv",
+    "data/Nazario.csv",
+    "data/Nigerian_5.csv",
+    "data/Nigerian_Fraud.csv",
+    "data/SpamAssasin.csv"
 ]
 
 label_positions = [
