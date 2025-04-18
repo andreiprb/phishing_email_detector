@@ -1,18 +1,17 @@
-from data_holder import EmailDataset
+from metadata_model.data_holder import EmailDataset
 import tensorflow as tf
 from keras.api import layers, Model, Sequential
 from sklearn.model_selection import train_test_split
 
 tf.random.set_seed(42)
 
-# Load the dataset
 emails = [
-    "data/CEAS_08.csv",
-    "data/Nazario_5.csv",
-    "data/Nazario.csv",
-    "data/Nigerian_5.csv",
-    "data/Nigerian_Fraud.csv",
-    "data/SpamAssasin.csv"
+    "../data/CEAS_08.csv",
+    "../data/Nazario_5.csv",
+    "../data/Nazario.csv",
+    "../data/Nigerian_5.csv",
+    "../data/Nigerian_Fraud.csv",
+    "../data/SpamAssasin.csv"
 ]
 
 label_positions = [
@@ -26,7 +25,6 @@ label_positions = [
 
 dataset = EmailDataset(emails, label_positions)
 
-# Convert dataset to DataFrame for compatibility with TensorFlow
 data = []
 labels = []
 for i in range(len(dataset)):
@@ -34,10 +32,8 @@ for i in range(len(dataset)):
     data.append(email)
     labels.append(label)
 
-# Split the dataset into training and testing sets
 train_data, test_data, train_labels, test_labels = train_test_split(data, labels, test_size=0.2, random_state=42)
 
-# Preprocess the text data
 max_features = 20000
 max_len = 200
 
@@ -49,7 +45,6 @@ X_test = vectorizer(test_data)
 y_train = tf.convert_to_tensor(train_labels, dtype=tf.float32)
 y_test = tf.convert_to_tensor(test_labels, dtype=tf.float32)
 
-# Define the transformer model
 class TransformerBlock(layers.Layer):
     def __init__(self, embed_dim, num_heads, ff_dim, rate=0.1):
         super(TransformerBlock, self).__init__()

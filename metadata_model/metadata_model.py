@@ -1,4 +1,4 @@
-from data_holder import EmailDataset
+from metadata_model.data_holder import EmailDataset
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -16,12 +16,12 @@ print(f"Using device: {device}")
 # Load the dataset
 
 emails = [
-    "data/CEAS_08.csv",
-    "data/Nazario_5.csv",
-    "data/Nazario.csv",
-    "data/Nigerian_5.csv",
-    "data/Nigerian_Fraud.csv",
-    "data/SpamAssasin.csv"
+    "../data/CEAS_08.csv",
+    "../data/Nazario_5.csv",
+    "../data/Nazario.csv",
+    "../data/Nigerian_5.csv",
+    "../data/Nigerian_Fraud.csv",
+    "../data/SpamAssasin.csv"
 ]
 
 label_positions = [
