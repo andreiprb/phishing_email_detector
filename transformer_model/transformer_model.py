@@ -1,55 +1,59 @@
-from metadata_model.data_holder import EmailDataset
 import tensorflow as tf
 from keras.api import layers, Model, Sequential
+import pandas as pd
 from sklearn.model_selection import train_test_split
+import re
+from glob import glob
 
 tf.random.set_seed(42)
 
-emails = [
-    "../data/CEAS_08.csv",
-    "../data/Nazario_5.csv",
-    "../data/Nazario.csv",
-    "../data/Nigerian_5.csv",
-    "../data/Nigerian_Fraud.csv",
-    "../data/SpamAssasin.csv"
-]
+csv_files = glob("../data/*.csv")
 
-label_positions = [
-    "second_last",
-    "second_last",
-    "last",
-    "second_last",
-    "last",
-    "second_last"
-]
+df_list = []
+for file in csv_files:
+    try:
+        df_temp = pd.read_csv(file, on_bad_lines='skip', encoding='utf-8')
+        if {'subject', 'body', 'label'}.issubset(df_temp.columns):
+            df_list.append(df_temp)
+        else:
+            print(f"Sărit fișierul {file} - coloane lipsă.")
+    except Exception as e:
+        print(f"Eroare la citirea fișierului {file}: {e}")
 
-dataset = EmailDataset(emails, label_positions)
+df = pd.concat(df_list, ignore_index=True)
 
-data = []
-labels = []
-for i in range(len(dataset)):
-    email, label = dataset[i]
-    data.append(email)
-    labels.append(label)
+df['text'] = df['subject'].astype(str) + " " + df['body'].astype(str)
 
-train_data, test_data, train_labels, test_labels = train_test_split(data, labels, test_size=0.2, random_state=42)
+def preprocess_text(text):
+    text = text.lower()
+    text = re.sub(r"[^a-z0-9\s]", "", text)
+    return text
+
+df['text'] = df['text'].apply(preprocess_text)
+df['label'] = df['label'].astype(int)
+
+train_df, test_df = train_test_split(df, test_size=0.2, random_state=42)
 
 max_features = 20000
 max_len = 200
 
 vectorizer = layers.TextVectorization(max_tokens=max_features, output_mode='int', output_sequence_length=max_len)
-vectorizer.adapt(train_data)
+vectorizer.adapt(train_df['text'].values)
 
-X_train = vectorizer(train_data)
-X_test = vectorizer(test_data)
-y_train = tf.convert_to_tensor(train_labels, dtype=tf.float32)
-y_test = tf.convert_to_tensor(test_labels, dtype=tf.float32)
+X_train = vectorizer(train_df['text'].values)
+X_test = vectorizer(test_df['text'].values)
+y_train = train_df['label'].values
+y_test = test_df['label'].values
 
+# Bloc Transformer
 class TransformerBlock(layers.Layer):
     def __init__(self, embed_dim, num_heads, ff_dim, rate=0.1):
         super(TransformerBlock, self).__init__()
         self.att = layers.MultiHeadAttention(num_heads=num_heads, key_dim=embed_dim)
-        self.ffn = Sequential([layers.Dense(ff_dim, activation="relu"), layers.Dense(embed_dim)])
+        self.ffn = Sequential([
+            layers.Dense(ff_dim, activation="relu"),
+            layers.Dense(embed_dim)
+        ])
         self.layernorm1 = layers.LayerNormalization(epsilon=1e-6)
         self.layernorm2 = layers.LayerNormalization(epsilon=1e-6)
         self.dropout1 = layers.Dropout(rate)
@@ -87,6 +91,7 @@ batch_size = 32
 epochs = 5
 
 history = model.fit(X_train, y_train, batch_size=batch_size, epochs=epochs, validation_split=0.1)
+
 loss, accuracy = model.evaluate(X_test, y_test)
 print("Loss:", loss)
 print("Accuracy:", accuracy)
