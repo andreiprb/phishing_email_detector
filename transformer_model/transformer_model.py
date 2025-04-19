@@ -4,6 +4,7 @@ import re
 import tensorflow as tf
 from keras.api import layers, Model, Sequential
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report
 
 tf.random.set_seed(42)
 
@@ -103,7 +104,6 @@ else:
 
     model = Model(inputs=inputs, outputs=outputs)
     model.compile(optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"])
-    model.summary()
 
     batch_size = 32
     epochs = 5
@@ -112,6 +112,14 @@ else:
     model.save(model_path)
     print("Model salvat.")
 
+model.summary()
 loss, accuracy = model.evaluate(X_test, y_test)
 print("Loss:", loss)
 print("Acuratețe:", accuracy)
+
+y_pred_probs = model.predict(X_test)
+y_pred = (y_pred_probs > 0.5).astype(int).flatten()
+
+# Afișare raport complet în format text
+print("\nRaport clasificare:\n")
+print(classification_report(y_test, y_pred, digits=4))
