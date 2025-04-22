@@ -11,7 +11,7 @@ if __name__ == "__main__":
     detector = SpamDetector(
         spam_index_path="../data/index_spam",
         ham_index_path="../data/index_ham",
-        top_k=5
+        top_k=2
     )
 
     classification, confidence = detector.classify(sample_body)

@@ -1,6 +1,8 @@
 import os
+import re
 from dotenv import load_dotenv
 from typing import Tuple, Optional, List
+
 from llama_index.core import load_index_from_storage, StorageContext, Settings
 from llama_index.core.base.embeddings.base import BaseEmbedding
 from llama_index.core.base.llms.base import BaseLLM
@@ -20,7 +22,7 @@ class SpamDetector:
             embed_model: Optional[BaseEmbedding] = None,
             spam_index_path: str = "../data/index_spam",
             ham_index_path: str = "../data/index_ham",
-            top_k: int = 5
+            top_k: int = 2
     ):
         """
         Initialize the SpamDetector with LLM and vector stores.
@@ -58,60 +60,6 @@ class SpamDetector:
         else:
             raise FileNotFoundError(f"Index not found at {index_path}")
 
-    def _extract_key_features(self, nodes: List[NodeWithScore], category: str) -> str:
-        """
-        Extract key features from the examples instead of using full text.
-        This dramatically reduces prompt size while preserving signal.
-        """
-        if not nodes:
-            return f"No {category} examples found."
-
-        features = []
-        for i, node in enumerate(nodes[:3]):  # Limit to top 3 for brevity
-            text = node.node.text
-
-            # Extract key features based on category
-            if category == "spam":
-                # For spam, look for suspicious patterns
-                indicators = []
-                if "http" in text or "www." in text or "click" in text.lower():
-                    indicators.append("contains links")
-                if "urgent" in text.lower() or "limited time" in text.lower() or "act now" in text.lower():
-                    indicators.append("urgency tactics")
-                if "congratulation" in text.lower() or "winner" in text.lower() or "selected" in text.lower():
-                    indicators.append("unsolicited rewards")
-                if "dear customer" in text.lower() or "valued customer" in text.lower():
-                    indicators.append("generic greeting")
-                if "$" in text or "€" in text or "money" in text.lower() or "cash" in text.lower():
-                    indicators.append("money-related")
-
-                if not indicators:
-                    # Fallback if no patterns detected
-                    snippet = text[:100] + "..." if len(text) > 100 else text
-                    indicators.append(f"sample text: {snippet}")
-
-                features.append(f"SPAM EXAMPLE {i + 1}: {', '.join(indicators)}")
-            else:
-                # For ham, focus on legitimate patterns
-                indicators = []
-                if "@" in text and not ("http" in text or "www." in text):
-                    indicators.append("personal communication")
-                if len(text.split()) > 20 and text.count('.') > 3:
-                    indicators.append("detailed content")
-                if "meeting" in text.lower() or "schedule" in text.lower() or "project" in text.lower():
-                    indicators.append("business/personal context")
-                if "thanks" in text.lower() or "thank you" in text.lower():
-                    indicators.append("personal acknowledgment")
-
-                if not indicators:
-                    # Fallback if no patterns detected
-                    snippet = text[:100] + "..." if len(text) > 100 else text
-                    indicators.append(f"sample text: {snippet}")
-
-                features.append(f"HAM EXAMPLE {i + 1}: {', '.join(indicators)}")
-
-        return "\n".join(features)
-
     def classify(self, email_text: str) -> Tuple[str, float]:
         """
         Classify an email as spam or ham using vector retrieval + LLM.
@@ -122,124 +70,105 @@ class SpamDetector:
         Returns:
             Tuple containing classification ('spam' or 'ham') and confidence score
         """
-        # Get similar examples from both indices
-        spam_retriever = self.spam_index.as_retriever(similarity_top_k=self.top_k)
-        ham_retriever = self.ham_index.as_retriever(similarity_top_k=self.top_k)
+        # Query both indices to retrieve similar examples
+        spam_query_engine = self.spam_index.as_query_engine(similarity_top_k=self.top_k)
+        ham_query_engine = self.ham_index.as_query_engine(similarity_top_k=self.top_k)
 
-        spam_nodes = spam_retriever.retrieve(email_text)
-        ham_nodes = ham_retriever.retrieve(email_text)
+        # Retrieve similar examples from both indices
+        spam_response = spam_query_engine.query(email_text)
+        ham_response = ham_query_engine.query(email_text)
 
-        # Calculate relevance scores (higher = more similar to input)
-        avg_spam_score = sum(node.score for node in spam_nodes) / len(spam_nodes) if spam_nodes else 0
-        avg_ham_score = sum(node.score for node in ham_nodes) / len(ham_nodes) if ham_nodes else 0
+        # Get source nodes (examples) with similarity scores
+        spam_examples = spam_response.source_nodes
+        ham_examples = ham_response.source_nodes
 
-        # Extract key features instead of full examples
-        spam_features = self._extract_key_features(spam_nodes, "spam")
-        ham_features = self._extract_key_features(ham_nodes, "ham")
+        # Create a prompt with examples and the email to classify
+        prompt = self._create_classification_prompt(email_text, spam_examples, ham_examples)
 
-        # Define common spam indicators explicitly
-        spam_indicators = """
-        SPAM INDICATORS:
-        - Unsolicited offers, rewards, or prizes
-        - Urgent calls to action ("Act now", "Limited time")
-        - Suspicious links or attachments
-        - Generic greetings ("Dear Customer")
-        - Too good to be true offers
-        - Requests for personal information
-        - Excessive punctuation or ALL CAPS
-        - Misspellings or poor grammar
-        - Suspicious sender addresses
-        - Requests to click links or download files
-        """
-
-        # Define common ham indicators explicitly
-        ham_indicators = """
-        HAM INDICATORS:
-        - Expected or solicited communication
-        - Specific and personalized content
-        - Relevant to recipient's work, personal life, or interests
-        - Professional or personal tone appropriate to the relationship
-        - Specific greeting with recipient's name
-        - Coherent and logical content
-        - Proper grammar and formatting
-        - Clear sender identification
-        """
-
-        # Build a shorter, more focused prompt
-        prompt = f"""You are an expert email spam detector. Analyze this email and determine if it's spam or legitimate (ham).
-
-        {spam_indicators}
-        {ham_indicators}
-
-        SIMILARITY SCORES:
-        - Similarity to known spam: {avg_spam_score:.4f}
-        - Similarity to known ham: {avg_ham_score:.4f}
-
-        SIMILAR SPAM EXAMPLES:
-        {spam_features}
-
-        SIMILAR HAM EXAMPLES:
-        {ham_features}
-
-        EMAIL TO CLASSIFY:
-        {email_text}
-
-        First, identify any spam indicators in the email.
-        Then, identify any ham indicators in the email.
-        Finally, determine if this is "spam" or "ham" based on the indicators and provide your confidence (0.0-1.0).
-
-        CLASSIFICATION:"""
-
-        # Get LLM response
+        # Get classification from LLM
         response = self.llm.complete(prompt)
-        response_text = response.text.strip()
 
-        # Parse the response
+        # Parse the response to get classification and confidence
+        classification, confidence = self._parse_classification_response(response.text)
+
+        return classification, confidence
+
+    def _create_classification_prompt(self, email_text: str, spam_examples: List[NodeWithScore],
+                                      ham_examples: List[NodeWithScore]) -> str:
+        """
+        Create a prompt for the LLM with examples and the email to classify.
+
+        Args:
+            email_text: The email text to classify
+            spam_examples: List of spam examples with similarity scores
+            ham_examples: List of ham examples with similarity scores
+
+        Returns:
+            String prompt for the LLM
+        """
+        prompt = "You are an expert spam email detector. Analyze the email below and classify it as 'spam' or 'ham' (not spam).\n\n"
+        limit: int = 200
+
+        prompt += "## SIMILAR SPAM EXAMPLES:\n"
+        for i, example in enumerate(spam_examples):
+            prompt += f"Spam Example {i + 1} (similarity: {example.score:.4f}):\n"
+            prompt += f"{example.node.get_content()}\n\n"
+
+        prompt += "## SIMILAR HAM EXAMPLES:\n"
+        for i, example in enumerate(ham_examples):
+            prompt += f"Ham Example {i + 1} (similarity: {example.score:.4f}):\n"
+            prompt += f"{example.node.get_content()}\n\n"
+
+        prompt += "## EMAIL TO CLASSIFY:\n"
+        prompt += email_text + "\n\n"
+
+        prompt += """
+            Based on the examples above and your knowledge of spam detection, classify the email as 'spam' or 'ham'.
+        
+            Provide your reasoning first, analyzing the email's content, language patterns, and similarity to the examples.
+            Then provide your final classification in this exact format:
+            CLASSIFICATION: [spam/ham]
+            CONFIDENCE: [0.0-1.0]
+        
+            The confidence score should be between 0.0 and 1.0, where 1.0 indicates complete certainty.
+            """
+
+        return prompt
+
+    def _parse_classification_response(self, response_text: str) -> Tuple[str, float]:
+        """
+        Parse the LLM's response to extract classification and confidence.
+
+        Args:
+            response_text: The text response from the LLM
+
+        Returns:
+            Tuple of (classification, confidence)
+        """
         try:
-            # Look for explicit classification statement
-            if "spam" in response_text.lower() and "ham" in response_text.lower():
-                # Both words appear, need to determine which is the conclusion
-                lines = response_text.lower().split('\n')
-                last_few_lines = ' '.join(lines[-3:])  # Check the final conclusion
-
-                classification = "spam" if last_few_lines.count("spam") > last_few_lines.count("ham") else "ham"
-
-                # Extract confidence if present
-                import re
-                confidence_matches = re.findall(r'confidence[:\s]+([0-9.]+)', response_text.lower())
-                confidence = float(confidence_matches[0]) if confidence_matches else 0.8
-            else:
-                # Simpler case - one clearly dominates
-                classification = "spam" if response_text.lower().count("spam") > response_text.lower().count(
-                    "ham") else "ham"
-
-                # Extract confidence if present
-                import re
-                confidence_matches = re.findall(r'confidence[:\s]+([0-9.]+)', response_text.lower())
-                confidence = float(confidence_matches[0]) if confidence_matches else 0.8
-
-            # Special rule - these are dead giveaways for spam
-            spam_phrases = ["click here", "congratulations", "limited time offer", "act now", "special offer",
-                            "prize", "claim your", "suspicious-link", "suspicious link"]
-
-            has_spam_phrases = any(phrase in email_text.lower() for phrase in spam_phrases)
-            has_urls = "http" in email_text or "www." in email_text
-
-            if has_spam_phrases and has_urls:
-                # Override for obvious spam
+            # Look for classification
+            classification = None
+            if "CLASSIFICATION: spam" in response_text.lower():
                 classification = "spam"
-                confidence = max(confidence, 0.9)  # Boost confidence for obvious spam
+            elif "CLASSIFICATION: ham" in response_text.lower():
+                classification = "ham"
 
-            return classification, min(max(confidence, 0.0), 1.0)  # Ensure confidence is between 0 and 1
+            # Look for confidence score
+            confidence = 0.5  # Default if we can't parse
+            confidence_match = re.search(r"CONFIDENCE:\s*(0\.\d+|1\.0)", response_text)
+            if confidence_match:
+                confidence = float(confidence_match.group(1))
+
+            # If classification wasn't found in expected format, try to infer from text
+            if classification is None:
+                if "spam" in response_text.lower() and "not spam" not in response_text.lower():
+                    classification = "spam"
+                else:
+                    classification = "ham"
+
+            return classification, confidence
 
         except Exception as e:
-            # Fallback if parsing fails
-            print(f"Error parsing response: {e}")
-            # Count occurrences as a simple fallback method
-            spam_count = response_text.lower().count("spam")
-            ham_count = response_text.lower().count("ham")
-
-            if spam_count > ham_count:
-                return "spam", 0.7
-            else:
-                return "ham", 0.7
+            print(f"Error parsing LLM response: {e}")
+            # Default to ham with low confidence if parsing fails
+            return "ham", 0.5
