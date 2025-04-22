@@ -1,7 +1,7 @@
 import os
 import re
 from dotenv import load_dotenv
-from typing import Tuple, Optional, List
+from typing import Tuple, Optional, List, Dict, Any
 
 from llama_index.core import load_index_from_storage, StorageContext, Settings
 from llama_index.core.base.embeddings.base import BaseEmbedding
@@ -60,12 +60,14 @@ class SpamDetector:
         else:
             raise FileNotFoundError(f"Index not found at {index_path}")
 
-    def classify(self, email_text: str) -> Tuple[str, float]:
+    def classify(self, email_text: str, metadata: Optional[Dict[str, Any]] = None) -> Tuple[str, float]:
         """
         Classify an email as spam or ham using vector retrieval + LLM.
 
         Args:
             email_text: The text content of the email to classify
+            metadata: Optional dictionary containing email metadata like sender, subject,
+                     attachment info, headers, etc.
 
         Returns:
             Tuple containing classification ('spam' or 'ham') and confidence score
@@ -74,62 +76,85 @@ class SpamDetector:
         spam_query_engine = self.spam_index.as_query_engine(similarity_top_k=self.top_k)
         ham_query_engine = self.ham_index.as_query_engine(similarity_top_k=self.top_k)
 
-        # Retrieve similar examples from both indices
         spam_response = spam_query_engine.query(email_text)
         ham_response = ham_query_engine.query(email_text)
 
-        # Get source nodes (examples) with similarity scores
         spam_examples = spam_response.source_nodes
         ham_examples = ham_response.source_nodes
 
-        # Create a prompt with examples and the email to classify
-        prompt = self._create_classification_prompt(email_text, spam_examples, ham_examples)
+        prompt = self._create_classification_prompt(email_text, spam_examples, ham_examples, metadata)
 
-        # Get classification from LLM
         response = self.llm.complete(prompt)
 
-        # Parse the response to get classification and confidence
         classification, confidence = self._parse_classification_response(response.text)
 
         return classification, confidence
 
     def _create_classification_prompt(self, email_text: str, spam_examples: List[NodeWithScore],
-                                      ham_examples: List[NodeWithScore]) -> str:
+                                      ham_examples: List[NodeWithScore],
+                                      metadata: Optional[Dict[str, Any]] = None) -> str:
         """
-        Create a prompt for the LLM with examples and the email to classify.
+        Create a prompt for the LLM with examples, metadata, and the email to classify.
 
         Args:
             email_text: The email text to classify
             spam_examples: List of spam examples with similarity scores
             ham_examples: List of ham examples with similarity scores
+            metadata: Optional dictionary containing email metadata
 
         Returns:
             String prompt for the LLM
         """
         prompt = "You are an expert spam email detector. Analyze the email below and classify it as 'spam' or 'ham' (not spam).\n\n"
-        limit: int = 200
 
+        # Include examples with their metadata if available
         prompt += "## SIMILAR SPAM EXAMPLES:\n"
         for i, example in enumerate(spam_examples):
             prompt += f"Spam Example {i + 1} (similarity: {example.score:.4f}):\n"
-            prompt += f"{example.node.get_content()}\n\n"
+            prompt += f"{example.node.get_content()}\n"
+
+            # Include metadata from example nodes if available
+            if hasattr(example.node, 'metadata') and example.node.metadata:
+                prompt += "Example Metadata:\n"
+                for key, value in example.node.metadata.items():
+                    prompt += f"- {key}: {value}\n"
+            prompt += "\n"
 
         prompt += "## SIMILAR HAM EXAMPLES:\n"
         for i, example in enumerate(ham_examples):
             prompt += f"Ham Example {i + 1} (similarity: {example.score:.4f}):\n"
-            prompt += f"{example.node.get_content()}\n\n"
+            prompt += f"{example.node.get_content()}\n"
+
+            # Include metadata from example nodes if available
+            if hasattr(example.node, 'metadata') and example.node.metadata:
+                prompt += "Example Metadata:\n"
+                for key, value in example.node.metadata.items():
+                    prompt += f"- {key}: {value}\n"
+            prompt += "\n"
 
         prompt += "## EMAIL TO CLASSIFY:\n"
         prompt += email_text + "\n\n"
 
+        # Include the metadata for the email being classified
+        if metadata:
+            prompt += "## EMAIL METADATA:\n"
+            for key, value in metadata.items():
+                prompt += f"- {key}: {value}\n"
+            prompt += "\n"
+
         prompt += """
-            Based on the examples above and your knowledge of spam detection, classify the email as 'spam' or 'ham'.
-        
-            Provide your reasoning first, analyzing the email's content, language patterns, and similarity to the examples.
+            Based on both the email content and metadata, classify the email as 'spam' or 'ham'.
+
+            Provide your reasoning first, analyzing:
+            1. The email's content and language patterns
+            2. The provided metadata (sender domain, headers, etc.)
+            3. Similarity to the examples
+            4. Any suspicious patterns in attachments or links
+
             Then provide your final classification in this exact format:
             CLASSIFICATION: [spam/ham]
             CONFIDENCE: [0.0-1.0]
-        
+
             The confidence score should be between 0.0 and 1.0, where 1.0 indicates complete certainty.
             """
 
@@ -146,20 +171,17 @@ class SpamDetector:
             Tuple of (classification, confidence)
         """
         try:
-            # Look for classification
             classification = None
             if "CLASSIFICATION: spam" in response_text.lower():
                 classification = "spam"
             elif "CLASSIFICATION: ham" in response_text.lower():
                 classification = "ham"
 
-            # Look for confidence score
-            confidence = 0.5  # Default if we can't parse
+            confidence = 0.5
             confidence_match = re.search(r"CONFIDENCE:\s*(0\.\d+|1\.0)", response_text)
             if confidence_match:
                 confidence = float(confidence_match.group(1))
 
-            # If classification wasn't found in expected format, try to infer from text
             if classification is None:
                 if "spam" in response_text.lower() and "not spam" not in response_text.lower():
                     classification = "spam"
@@ -170,5 +192,4 @@ class SpamDetector:
 
         except Exception as e:
             print(f"Error parsing LLM response: {e}")
-            # Default to ham with low confidence if parsing fails
             return "ham", 0.5
