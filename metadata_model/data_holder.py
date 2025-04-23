@@ -24,6 +24,7 @@ class EmailDataset(Dataset):
             
         # Validate all paths
         for path in path_csv:
+            print(f'Loading file: {path}')
             assert os.path.exists(path) and os.path.isfile(path), f'The path {path} does not point to a file'
         
         # Set default label positions if not provided

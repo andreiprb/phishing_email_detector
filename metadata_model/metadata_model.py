@@ -1,4 +1,4 @@
-from metadata_model.data_holder import EmailDataset
+from data_holder import EmailDataset
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -16,12 +16,12 @@ print(f"Using device: {device}")
 # Load the dataset
 
 emails = [
-    "../data/CEAS_08.csv",
-    "../data/Nazario_5.csv",
-    "../data/Nazario.csv",
-    "../data/Nigerian_5.csv",
-    "../data/Nigerian_Fraud.csv",
-    "../data/SpamAssasin.csv"
+    ".idea/dataSources/CEAS_08.csv",
+    ".idea/dataSources/Nazario_5.csv",
+    ".idea/dataSources/Nazario.csv",
+    ".idea/dataSources/Nigerian_5.csv",
+    ".idea/dataSources/Nigerian_Fraud.csv",
+    ".idea/dataSources/SpamAssasin.csv"
 ]
 
 label_positions = [
@@ -130,12 +130,15 @@ print(f'Acuratetea modelului neantrenat: {acc * 100}%')
 
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=1e-5)
 
+# loss_fn = nn.CrossEntropyLoss()
 loss_fn = nn.BCEWithLogitsLoss()
 
 epochs = 50
 
 losses = []
 accuracies = []
+train_accuracies = []
+
 for epoch in range(epochs):
     # modelul trebuie trecut in modul train inainte de a se face instruirea lui
     # trecerea lui pe modul eval apare la apelul metodei de test()
@@ -173,6 +176,9 @@ for epoch in range(epochs):
     print(f'Epoca: {epoch+1}/{epochs}: loss = {epoch_loss:.7f}')
     acc_test = test(model, test_loader, device)
     accuracies.append(acc_test)
+    acc_train = test(model, train_loader, device)
+    train_accuracies.append(acc_train)
+    print(f'Epoca: {epoch + 1}/{epochs}: acuratete pe setul de antrenare = {acc_train * 100:.4f}%')
     print(f'Epoca: {epoch + 1}/{epochs}: acuratete pe setul de testare = {acc_test * 100:.4f}%\n')
 
 plt.plot(losses)
@@ -181,8 +187,11 @@ plt.ylabel('Eroare')
 plt.title(f'Valoarea functiei de eroare in timpul instruirii')
 plt.show()
 
-plt.plot(accuracies)
+# a plot of the accuracies side by side
+plt.plot(accuracies, label='Test')
+plt.plot(train_accuracies, label='Train')
 plt.xlabel('Epoca')
-plt.ylabel('Acuratete pe setul de testare')
-plt.title(f'Acuratetea pe setul de testare pentru clasele binare')
+plt.ylabel('Acuratete')
+plt.title(f'Acuratetea in timpul instruirii')
+plt.legend()
 plt.show()
