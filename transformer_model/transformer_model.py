@@ -1,13 +1,26 @@
+import os
+import pandas as pd
+import re
 import tensorflow as tf
 from keras.api import layers, Model, Sequential
-import pandas as pd
 from sklearn.model_selection import train_test_split
-import re
-from glob import glob
+from sklearn.metrics import classification_report
 
 tf.random.set_seed(42)
 
-csv_files = glob("../data/*.csv")
+gpus = tf.config.list_physical_devices('GPU')
+if gpus:
+    try:
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        print("GPU")
+    except RuntimeError as e:
+        pass
+else:
+    print("CPU")
+
+data_dir = "../data/"
+csv_files = [os.path.join(data_dir, file) for file in os.listdir(data_dir) if file.endswith(".csv")]
 
 df_list = []
 for file in csv_files:
@@ -16,7 +29,7 @@ for file in csv_files:
         if {'subject', 'body', 'label'}.issubset(df_temp.columns):
             df_list.append(df_temp)
         else:
-            print(f"Sărit fișierul {file} - coloane lipsă.")
+            print(f"Fișierul {file} a fost sărit - lipsesc coloane.")
     except Exception as e:
         print(f"Eroare la citirea fișierului {file}: {e}")
 
@@ -45,10 +58,9 @@ X_test = vectorizer(test_df['text'].values)
 y_train = train_df['label'].values
 y_test = test_df['label'].values
 
-# Bloc Transformer
 class TransformerBlock(layers.Layer):
-    def __init__(self, embed_dim, num_heads, ff_dim, rate=0.1):
-        super(TransformerBlock, self).__init__()
+    def __init__(self, embed_dim, num_heads, ff_dim, rate=0.1, **kwargs):
+        super(TransformerBlock, self).__init__(**kwargs)
         self.att = layers.MultiHeadAttention(num_heads=num_heads, key_dim=embed_dim)
         self.ffn = Sequential([
             layers.Dense(ff_dim, activation="relu"),
@@ -72,26 +84,42 @@ num_heads = 4
 ff_dim = 128
 num_transformer_blocks = 2
 
-inputs = layers.Input(shape=(max_len,))
-x = layers.Embedding(input_dim=max_features, output_dim=embedding_dim, input_length=max_len)(inputs)
-for _ in range(num_transformer_blocks):
-    x = TransformerBlock(embedding_dim, num_heads, ff_dim)(x)
+model_path = "transformer_model.h5"
 
-x = layers.GlobalAveragePooling1D()(x)
-x = layers.Dropout(0.1)(x)
-x = layers.Dense(20, activation="relu")(x)
-x = layers.Dropout(0.1)(x)
-outputs = layers.Dense(1, activation="sigmoid")(x)
+if os.path.exists(model_path):
+    print("Se încarcă modelul salvat...")
+    model = tf.keras.models.load_model(model_path, custom_objects={'TransformerBlock': TransformerBlock})
+else:
+    print("Modelul nu există. Se construiește unul nou...")
 
-model = Model(inputs=inputs, outputs=outputs)
-model.compile(optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"])
+    inputs = layers.Input(shape=(max_len,))
+    x = layers.Embedding(input_dim=max_features, output_dim=embedding_dim, input_length=max_len)(inputs)
+    for _ in range(num_transformer_blocks):
+        x = TransformerBlock(embedding_dim, num_heads, ff_dim)(x)
+    x = layers.GlobalAveragePooling1D()(x)
+    x = layers.Dropout(0.1)(x)
+    x = layers.Dense(20, activation="relu")(x)
+    x = layers.Dropout(0.1)(x)
+    outputs = layers.Dense(1, activation="sigmoid")(x)
+
+    model = Model(inputs=inputs, outputs=outputs)
+    model.compile(optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"])
+
+    batch_size = 32
+    epochs = 5
+
+    history = model.fit(X_train, y_train, batch_size=batch_size, epochs=epochs, validation_split=0.1)
+    model.save(model_path)
+    print("Model salvat.")
+
 model.summary()
-
-batch_size = 32
-epochs = 5
-
-history = model.fit(X_train, y_train, batch_size=batch_size, epochs=epochs, validation_split=0.1)
-
 loss, accuracy = model.evaluate(X_test, y_test)
 print("Loss:", loss)
-print("Accuracy:", accuracy)
+print("Acuratețe:", accuracy)
+
+y_pred_probs = model.predict(X_test)
+y_pred = (y_pred_probs > 0.5).astype(int).flatten()
+
+# Afișare raport complet în format text
+print("\nRaport clasificare:\n")
+print(classification_report(y_test, y_pred, digits=4))
