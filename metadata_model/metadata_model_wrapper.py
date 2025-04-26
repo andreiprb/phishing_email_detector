@@ -1,7 +1,7 @@
 import torch
 from metadata_model.metadata_model import SimpleNN
 
-class metadata_model_wrapper:
+class MetadataModelWrapper:
     """
     A wrapper class for the SimpleNN model that should load a model from a file and provide methods for getting predictions and confidence scores.
     """

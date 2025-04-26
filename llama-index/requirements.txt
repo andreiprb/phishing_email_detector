@@ -1,6 +1,0 @@
-llama-index
-llama-index-llms-groq
-python-dotenv
-
-#data
-#https://zenodo.org/records/8339691

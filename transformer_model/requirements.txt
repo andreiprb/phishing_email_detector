@@ -1,5 +1,0 @@
-tensorflow
-tensorflow-metal
-keras
-scikit-learn
-pandas

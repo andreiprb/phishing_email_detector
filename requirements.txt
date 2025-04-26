@@ -1,0 +1,21 @@
+#data directory https://drive.google.com/drive/u/2/folders/13GwUlR3CTM-w8aTgBK-aT8oGe4cqyYWS
+numpy
+pandas
+scikit-learn
+matplotlib
+
+#rag pipeline
+llama-index
+llama-index-llms-groq
+python-dotenv
+
+#transformer model
+tensorflow
+keras
+
+#metadata model
+pytorch
+torchvision
+torchinfo
+
+
