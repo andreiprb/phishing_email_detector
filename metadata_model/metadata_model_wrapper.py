@@ -6,7 +6,7 @@ class metadata_model_wrapper:
     A wrapper class for the SimpleNN model that should load a model from a file and provide methods for getting predictions and confidence scores.
     """
     
-    def __init__(self, model_path: str):
+    def __init__(self, model_path: str = "../metadata_model/model.pth"):
         """
         Initializes the model wrapper by loading the model from the specified path.
         

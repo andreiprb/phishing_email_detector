@@ -190,7 +190,7 @@ for epoch in range(epochs):
 
 acc, y_pred, y_test = test(model, test_loader, device)
 
-torch.save(model.state_dict(), "model.pth")
+torch.save(model.state_dict(), "../trained_models/model.pth")
 
 # Afișare raport complet în format text
 print("\nRaport clasificare:\n")
