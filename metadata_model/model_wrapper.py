@@ -1,6 +1,5 @@
-import metadata_model
 import torch
-import torch.nn as nn
+from metadata_model.metadata_model import SimpleNN
 
 class model_wrapper:
     """
