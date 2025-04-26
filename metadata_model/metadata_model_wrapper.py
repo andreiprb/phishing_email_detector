@@ -1,12 +1,12 @@
 import torch
 from metadata_model.metadata_model import SimpleNN
-
+from config import METADATA_MODEL_PATH
 class MetadataModelWrapper:
     """
     A wrapper class for the SimpleNN model that should load a model from a file and provide methods for getting predictions and confidence scores.
     """
     
-    def __init__(self, model_path: str = "../metadata_model/model.pth"):
+    def __init__(self, model_path: str = METADATA_MODEL_PATH):
         """
         Initializes the model wrapper by loading the model from the specified path.
         
