@@ -83,7 +83,8 @@ class EmailDataset(Dataset):
             # Handle features (x)
             # For text/categorical columns, we'll need to encode them numerically
             x_numeric = []
-            
+            feature_cols = [col for col in feature_cols if col.lower() not in ['body', 'subject', 'reciever']]  # Exclude body and subject columns from features
+
             for col in feature_cols:
                 col_data = data[col]
                 # Check if column is numeric

@@ -5,6 +5,8 @@ import torch.nn.functional as F
 from torchvision import transforms
 from torchinfo import summary
 import os
+from sklearn.metrics import classification_report
+import numpy as np
 
 os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 
@@ -61,7 +63,7 @@ class SimpleNN(nn.Module):
         x = self.fully_connected(x)
         return x
     
-model = SimpleNN(input_size=6).to(device)
+model = SimpleNN(input_size=4).to(device)
 print(model)
 summary(model)
 
@@ -97,43 +99,48 @@ print(f'Total accuracy: {acuratete:.4f}')
 
 #TESTING FUNCTION
 @torch.no_grad()
-def test(model: nn.Module, loader: torch.utils.data.DataLoader, device: torch.device) -> float:
+def test(model: nn.Module, loader: torch.utils.data.DataLoader, device: torch.device) -> tuple[float, list, list]:
     """
     Testeaza modelul pe datele furnizate de :param loader:
     :param model: model de regresie logistica binara
     :param loader: un dataloader care furnizeaza datele din setul peset care se testeaza
     :param device: pe ce device se afla modelul (cpu, gpu, tpu etc)
-    :return: acuratetea de predictie
+    :return: acuratetea de predictie, y_pred, y_test
     """
     # initializare valori pt statistica
     correctly_classified = 0
     total_items = 0
     # cand se face testarea, modelul nu mai invata. El e trecut explicit in mod de testare
     model.eval()
+    y_pred = []
+    y_test = []
     for x, y in loader:
         # trecem datele din setul de testare pe acelasi device ca si modelul
         x, y = x.to(device), y.to(device)
+        good_labels = y == 1
+        for i in good_labels:
+            y_test.append(i.cpu().detach().numpy().item())
         
         # modelul prezice probabilitatile conditionate pentru minibatchul curent
-        y_hat = model(x).squeeze()
-        
+        y_hat = model(x).sigmoid().squeeze()     
         # predictia e clasa pozitiva daca probabilitatea e >=0.5, altfel clasa negativa
         predicted_class = y_hat >= 0.5
-        
+        for i in predicted_class:
+            y_pred.append(i.cpu().detach().numpy().item())
+
         correctly_classified += torch.sum(predicted_class == y)
         total_items += len(x)
     accuracy = correctly_classified / total_items
-    return accuracy.cpu().detach().item()
+    return accuracy.cpu().detach().item(), y_pred, y_test
 
-acc = test(model, test_loader, device)
+acc, _, _ = test(model, test_loader, device)
 print(f'Acuratetea modelului neantrenat: {acc * 100}%')
 
-optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=1e-5)
+optimizer = torch.optim.NAdam(model.parameters(), lr=0.0001, weight_decay=0.0001)
 
-# loss_fn = nn.CrossEntropyLoss()
 loss_fn = nn.BCEWithLogitsLoss()
 
-epochs = 50
+epochs = 30
 
 losses = []
 accuracies = []
@@ -174,24 +181,17 @@ for epoch in range(epochs):
     losses.append(epoch_loss)
     # afisam statistici
     print(f'Epoca: {epoch+1}/{epochs}: loss = {epoch_loss:.7f}')
-    acc_test = test(model, test_loader, device)
+    acc_test,_,_ = test(model, test_loader, device)
     accuracies.append(acc_test)
-    acc_train = test(model, train_loader, device)
+    acc_train,_,_ = test(model, train_loader, device)
     train_accuracies.append(acc_train)
     print(f'Epoca: {epoch + 1}/{epochs}: acuratete pe setul de antrenare = {acc_train * 100:.4f}%')
     print(f'Epoca: {epoch + 1}/{epochs}: acuratete pe setul de testare = {acc_test * 100:.4f}%\n')
 
-plt.plot(losses)
-plt.xlabel('Epoca')
-plt.ylabel('Eroare')
-plt.title(f'Valoarea functiei de eroare in timpul instruirii')
-plt.show()
+acc, y_pred, y_test = test(model, test_loader, device)
 
-# a plot of the accuracies side by side
-plt.plot(accuracies, label='Test')
-plt.plot(train_accuracies, label='Train')
-plt.xlabel('Epoca')
-plt.ylabel('Acuratete')
-plt.title(f'Acuratetea in timpul instruirii')
-plt.legend()
-plt.show()
+torch.save(model.state_dict(), "model.pth")
+
+# Afișare raport complet în format text
+print("\nRaport clasificare:\n")
+print(classification_report(y_test, y_pred, digits=4))
