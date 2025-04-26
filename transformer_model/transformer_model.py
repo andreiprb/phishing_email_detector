@@ -166,7 +166,7 @@ class EmailClassifier:
         self.vectorizer.adapt(texts)
         self.vectorizer_adapted = True
 
-    def predict_email(self, subject, body):
+    def predict_email(self, subject: str, body: str) -> tuple[bool, float]:
         text = f"{subject} {body}"
 
         preprocessed_text = self.preprocess_text(text)
