@@ -1,4 +1,4 @@
-from data_holder import EmailDataset
+from metadata_model.data_holder import EmailDataset
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -35,7 +35,7 @@ label_positions = [
     "second_last"
 ]
 
-class SimpleNN(nn.Module):
+class NotSimpleNN(nn.Module):
     def __init__(self, input_size: int):
         super().__init__()
         self.input_size = input_size
@@ -63,7 +63,7 @@ if __name__ == "__main__":
         print(data.shape, label.shape)
         break
 
-    model = SimpleNN(input_size=4).to(device)
+    model = NotSimpleNN(input_size=4).to(device)
     print(model)
     summary(model)
 

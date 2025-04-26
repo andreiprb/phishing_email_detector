@@ -1,24 +1,26 @@
 import torch
-from metadata_model.metadata_model import SimpleNN
-from config import METADATA_MODEL_PATH
+from metadata_model.metadata_model import NotSimpleNN
+import pandas as pd
+from typing import Tuple
 class MetadataModelWrapper:
     """
     A wrapper class for the SimpleNN model that should load a model from a file and provide methods for getting predictions and confidence scores.
     """
     
-    def __init__(self, model_path: str = METADATA_MODEL_PATH):
+    def __init__(self, model_path: str):
         """
         Initializes the model wrapper by loading the model from the specified path.
         
         :param model_path: Path to the saved model file.
         """
-        self.model = SimpleNN(input_size=4)  # Adjust input size as needed
+        self.model = NotSimpleNN(input_size=4)  # Adjust input size as needed
         self.model.load_state_dict(torch.load(model_path))
         self.model.eval()  # Set the model to evaluation mode
 
     def predict(self, x: torch.Tensor) -> bool:
         """
         Predicts the output for the given input tensor.
+        true - spam, false - ham
         
         :param x: Input tensor.
         :return: Predicted output tensor.
@@ -26,7 +28,25 @@ class MetadataModelWrapper:
         with torch.no_grad():
             return self.model(x).squeeze() >= 0.5
         
-    def get_confidence(self, x: torch.Tensor) -> torch.Tensor:
+    def _email_to_tensor(self, email: pd.DataFrame) -> torch.Tensor:
+        """
+        Converts an email object to a tensor representation.
+        
+        :param email: Email object to convert.
+        :return: Tensor representation of the email.
+        """
+        sender = email.get('sender', '')
+        date = email.get('date', '')
+        urls = email.get('urls', [])
+        # raspuns intai si dupa confidence
+        # Convert the email features to a tensor representation
+        x = torch.tensor([
+            len(sender),
+            len(date),
+            len(urls),
+        ], dtype=torch.float32).unsqueeze(0)
+        
+    def get_confidence(self, x: torch.Tensor) -> float:
         """
         Computes the confidence scores for the given input tensor.
         
@@ -36,4 +56,61 @@ class MetadataModelWrapper:
         with torch.no_grad():
             output = self.model(x)
             confidence_scores = torch.sigmoid(output)
-            return confidence_scores.squeeze()
+            return confidence_scores.squeeze().item()
+        
+    def get_prediction_and_confidence_from_email(self, email: pd.DataFrame) -> Tuple[bool, float]:
+        """
+        Computes the prediction and confidence score for the given input tensor.
+        
+        :param x: Input tensor.
+        :return: Tuple of (prediction, confidence score).
+        """
+        with torch.no_grad():
+            x = self._email_to_tensor(email)
+            output = self.model(x)
+            # Convert the output to a binary prediction (0 or 1) and confidence score
+            prediction = output.squeeze() >= 0.5
+            # Compute the confidence score using sigmoid activation
+            confidence_score = self.get_confidence(x)
+
+            return prediction, confidence_score
+        
+    def _create_tensor_from_dict(self, email: dict) -> torch.Tensor:
+        """
+        Converts a dictionary representation of an email to a tensor.
+        
+        :param email: Dictionary containing the email data.
+        :return: Tensor representation of the email.
+        """
+        # Extract features from the dictionary and convert to tensor
+        x = torch.tensor([
+            len(email.get('sender', '')),
+            len(email.get('date', '')),
+            len(email.get('urls', '')),
+        ], dtype=torch.float32).unsqueeze(0)
+        
+        return x
+    
+    def get_prediction_and_confidence_from_dict(self, email: dict) -> Tuple[bool, float]:
+        """
+        Computes the prediction and confidence score for the given dictionary representation of an email.
+        
+        :param email: Dictionary containing the email data.
+        :return: Tuple of (prediction, confidence score).
+        """
+        x = self._create_tensor_from_dict(email)
+        prediction = self.predict(x)
+        confidence_score = self.get_confidence(x)
+        
+        return prediction, confidence_score
+        
+    def test_model(self, test_data: pd.DataFrame) -> Tuple[bool, float]:
+        """
+        Tests the model on a given test dataset and returns the accuracy.
+        
+        :param test_data: DataFrame containing the test dataset.
+        :return: Accuracy of the model on the test dataset.
+        """
+        email = test_data.sample(n=1, random_state=42)
+        prediction, confidence = self.get_prediction_and_confidence_from_email(email)
+        return prediction, confidence
