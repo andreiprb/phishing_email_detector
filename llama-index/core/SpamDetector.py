@@ -107,13 +107,11 @@ class SpamDetector:
         """
         prompt = "You are an expert spam email detector. Analyze the email below and classify it as 'spam' or 'ham' (not spam).\n\n"
 
-        # Include examples with their metadata if available
         prompt += "## SIMILAR SPAM EXAMPLES:\n"
         for i, example in enumerate(spam_examples):
             prompt += f"Spam Example {i + 1} (similarity: {example.score:.4f}):\n"
             prompt += f"{example.node.get_content()}\n"
 
-            # Include metadata from example nodes if available
             if hasattr(example.node, 'metadata') and example.node.metadata:
                 prompt += "Example Metadata:\n"
                 for key, value in example.node.metadata.items():
@@ -125,7 +123,6 @@ class SpamDetector:
             prompt += f"Ham Example {i + 1} (similarity: {example.score:.4f}):\n"
             prompt += f"{example.node.get_content()}\n"
 
-            # Include metadata from example nodes if available
             if hasattr(example.node, 'metadata') and example.node.metadata:
                 prompt += "Example Metadata:\n"
                 for key, value in example.node.metadata.items():
@@ -135,7 +132,6 @@ class SpamDetector:
         prompt += "## EMAIL TO CLASSIFY:\n"
         prompt += email_text + "\n\n"
 
-        # Include the metadata for the email being classified
         if metadata:
             prompt += "## EMAIL METADATA:\n"
             for key, value in metadata.items():
@@ -158,6 +154,7 @@ class SpamDetector:
             The confidence score should be between 0.0 and 1.0, where 1.0 indicates complete certainty.
             """
 
+        # print(prompt)
         return prompt
 
     def _parse_classification_response(self, response_text: str) -> Tuple[str, float]:

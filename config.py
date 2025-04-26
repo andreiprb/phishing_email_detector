@@ -1,0 +1,5 @@
+INDEX_SPAM_PATH = r"data/indexes/index_spam"
+INDEX_HAM_PATH = r"data/indexes/index_ham"
+DATASETS_PATH = r"data/datasets"
+METADATA_MODEL_PATH = r"data/models/model.pth"
+TRANSFORMER_MODEL_PATH = r"data/models/transformer_model.h5"
