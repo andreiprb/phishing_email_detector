@@ -1,5 +1,10 @@
+import pandas as pd
+from typing import Dict, Tuple
+import sys
+sys.path.append("..")  # Adjust the path to your project structure
 import torch
-from metadata_model.metadata_model import NotSimpleNN
+from metadata_model import NotSimpleNN
+from data_holder import string_to_int
 import pandas as pd
 from typing import Tuple
 class MetadataModelWrapper:
@@ -13,7 +18,7 @@ class MetadataModelWrapper:
         
         :param model_path: Path to the saved model file.
         """
-        self.model = NotSimpleNN(input_size=4)  # Adjust input size as needed
+        self.model = NotSimpleNN(input_size=3)  # Adjust input size as needed
         self.model.load_state_dict(torch.load(model_path))
         self.model.eval()  # Set the model to evaluation mode
 
@@ -35,16 +40,16 @@ class MetadataModelWrapper:
         :param email: Email object to convert.
         :return: Tensor representation of the email.
         """
-        sender = email.get('sender', '')
+        sender: str = email.get('sender', '')
         date = email.get('date', '')
         urls = email.get('urls', [])
-        # raspuns intai si dupa confidence
         # Convert the email features to a tensor representation
         x = torch.tensor([
-            len(sender),
-            len(date),
-            len(urls),
-        ], dtype=torch.float32).unsqueeze(0)
+            string_to_int(sender.values[0]),
+            string_to_int(date.values[0]),
+            urls.values[0],
+        ], dtype=torch.float32)
+        return x
         
     def get_confidence(self, x: torch.Tensor) -> float:
         """
@@ -55,7 +60,7 @@ class MetadataModelWrapper:
         """
         with torch.no_grad():
             output = self.model(x)
-            confidence_scores = torch.sigmoid(output)
+            confidence_scores = output.softmax(dim=0)  # Apply softmax to get confidence scores
             return confidence_scores.squeeze().item()
         
     def get_prediction_and_confidence_from_email(self, email: pd.DataFrame) -> Tuple[bool, float]:
@@ -84,14 +89,13 @@ class MetadataModelWrapper:
         """
         # Extract features from the dictionary and convert to tensor
         x = torch.tensor([
-            len(email.get('sender', '')),
-            len(email.get('date', '')),
-            len(email.get('urls', '')),
-        ], dtype=torch.float32).unsqueeze(0)
-        
+            string_to_int(email.get('sender', '')),
+            string_to_int(email.get('date', '')),
+            email.get('urls', ''),
+        ], dtype=torch.float32)
         return x
     
-    def get_prediction_and_confidence_from_dict(self, email: dict) -> Tuple[bool, float]:
+    def get_prediction_from_dict(self, email: dict) -> bool:
         """
         Computes the prediction and confidence score for the given dictionary representation of an email.
         
@@ -100,9 +104,8 @@ class MetadataModelWrapper:
         """
         x = self._create_tensor_from_dict(email)
         prediction = self.predict(x)
-        confidence_score = self.get_confidence(x)
         
-        return prediction, confidence_score
+        return prediction
         
     def test_model(self, test_data: pd.DataFrame) -> Tuple[bool, float]:
         """
@@ -114,3 +117,16 @@ class MetadataModelWrapper:
         email = test_data.sample(n=1, random_state=42)
         prediction, confidence = self.get_prediction_and_confidence_from_email(email)
         return prediction, confidence
+    
+if __name__ == "__main__":
+    # Example usage
+
+    model_path = "data/models/model.pth"
+    metadata_model_wrapper = MetadataModelWrapper(model_path)
+
+    emails = pd.read_csv("data/datasets/CEAS_08.csv")
+    test_data = emails.sample(n=1, random_state=44)
+
+    prediction, confidence = metadata_model_wrapper.get_prediction_and_confidence_from_email(test_data)
+    print(f"Prediction: {prediction}, Confidence: {confidence}")
+    

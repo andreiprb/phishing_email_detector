@@ -3,8 +3,12 @@ import torch
 import pandas as pd
 import numpy as np
 from torch.utils.data import Dataset
+import hashlib
 from typing import Tuple, List, Dict, Union
 
+def string_to_int(s):
+    # Use a hash function and map to a fixed integer space
+    return int(hashlib.md5(s.encode()).hexdigest(), 16) % (10**8)  # 8-digit integer
 class EmailDataset(Dataset):
     def __init__(self, path_csv: Union[str, List[str]], label_position: Union[str, List[str]] = None):
         """
@@ -83,7 +87,7 @@ class EmailDataset(Dataset):
             # Handle features (x)
             # For text/categorical columns, we'll need to encode them numerically
             x_numeric = []
-            feature_cols = [col for col in feature_cols if col.lower() not in ['body', 'subject', 'reciever']]  # Exclude body and subject columns from features
+            feature_cols = [col for col in feature_cols if col.lower() not in ['body', 'subject', 'receiver', 'label']]  # Exclude body and subject columns from features
 
             for col in feature_cols:
                 col_data = data[col]
@@ -92,17 +96,8 @@ class EmailDataset(Dataset):
                     # If numeric, convert directly to numpy array
                     x_numeric.append(col_data.values.reshape(-1, 1))
                 else:
-                    # If categorical/text, encode as integers
-                    unique_values = col_data.unique()
-                    col_key = f"{path}_{col}"  # Make unique key for each file-column combination
-                    
-                    if col_key not in self.feature_maps:
-                        self.feature_maps[col_key] = {value: i for i, value in enumerate(unique_values)}
-                    
-                    value_map = self.feature_maps[col_key]
-                    
                     # Convert to numeric using the mapping
-                    encoded_values = np.array([value_map.get(value, -1) for value in col_data], dtype=np.float32)
+                    encoded_values = np.array([string_to_int(value) for value in col_data], dtype=np.float32)
                     x_numeric.append(encoded_values.reshape(-1, 1))
             
             # Combine all feature columns for this file
@@ -128,7 +123,7 @@ class EmailDataset(Dataset):
         for x_array in all_x_data:
             cumulative_size += x_array.shape[0]
             self.file_boundaries.append(cumulative_size)
-    
+
     def get_file_index(self, index: int) -> int:
         """
         Returns the file index that contains the record at the given index

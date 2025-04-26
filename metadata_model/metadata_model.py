@@ -1,4 +1,4 @@
-from metadata_model.data_holder import EmailDataset
+from data_holder import EmailDataset
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -12,9 +12,10 @@ os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 
 import matplotlib.pyplot as plt
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-print(f"Using device: {device}")
+if __name__ == "__main__":
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
 # Load the dataset
 
 emails = [
@@ -63,7 +64,7 @@ if __name__ == "__main__":
         print(data.shape, label.shape)
         break
 
-    model = NotSimpleNN(input_size=4).to(device)
+    model = NotSimpleNN(input_size=3).to(device)
     print(model)
     summary(model)
 
@@ -191,7 +192,7 @@ if __name__ == "__main__":
 
     acc, y_pred, y_test = test(model, test_loader, device)
 
-    torch.save(model.state_dict(), "../trained_models/model.pth")
+    torch.save(model.state_dict(), "data/models/model.pth")
 
     # Afișare raport complet în format text
     print("\nRaport clasificare:\n")
