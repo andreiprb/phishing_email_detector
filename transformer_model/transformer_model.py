@@ -45,6 +45,8 @@ def preprocess_text(text):
 df['text'] = df['text'].apply(preprocess_text)
 df['label'] = df['label'].astype(int)
 
+print(len(df))
+
 train_df, test_df = train_test_split(df, test_size=0.2, random_state=42)
 
 max_features = 20000
@@ -120,6 +122,5 @@ print("Acuratețe:", accuracy)
 y_pred_probs = model.predict(X_test)
 y_pred = (y_pred_probs > 0.5).astype(int).flatten()
 
-# Afișare raport complet în format text
 print("\nRaport clasificare:\n")
 print(classification_report(y_test, y_pred, digits=4))
