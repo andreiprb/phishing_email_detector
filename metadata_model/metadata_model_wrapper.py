@@ -1,10 +1,10 @@
 import pandas as pd
 from typing import Dict, Tuple
 import sys
-sys.path.append("..")  # Adjust the path to your project structure
+
 import torch
-from metadata_model import NotSimpleNN
-from data_holder import string_to_int
+from metadata_model.metadata_model import NotSimpleNN
+from metadata_model.data_holder import string_to_int
 import pandas as pd
 from typing import Tuple
 class MetadataModelWrapper:
