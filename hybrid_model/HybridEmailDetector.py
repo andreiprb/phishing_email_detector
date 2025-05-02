@@ -1,4 +1,5 @@
 import pandas as pd
+from pathlib import Path
 
 from rag_model.core.SpamDetector import SpamDetector
 from transformer_model.transformer_model import EmailClassifier
@@ -9,14 +10,22 @@ from hybrid_model.utils import generate_rapport_body
 from hybrid_model.models import RaportModel
 
 class HybridEmailDetector:
-    def __init__(self, confidence_treshold: float = 0.7):
+    def __init__(self,
+                 index_spam_path        : str | Path = config.INDEX_SPAM_PATH,
+                 index_ham_path         : str | Path = config.INDEX_HAM_PATH,
+                 transformer_model_path : str | Path = config.TRANSFORMER_MODEL_PATH,
+                 metadata_model_path    : str | Path = config.METADATA_MODEL_PATH,
+                 datasets_path          : str | Path = config.DATASETS_PATH,
+                 confidence_treshold    : float = 0.7,
+                 tok_k                  : int = 1
+                 ):
         self.rag_model = SpamDetector(
-            spam_index_path=config.INDEX_SPAM_PATH,
-            ham_index_path=config.INDEX_HAM_PATH,
-            top_k=1
+            spam_index_path=index_spam_path,
+            ham_index_path=index_ham_path,
+            top_k=tok_k
         )
-        self.transformer_model = EmailClassifier()
-        self.metadata_model = MetadataModelWrapper()
+        self.transformer_model = EmailClassifier(model_path=str(transformer_model_path), data_dir=str(datasets_path))
+        self.metadata_model = MetadataModelWrapper(model_path=str(metadata_model_path))
 
         self.confidence_treshold = confidence_treshold
         self.raports: list[RaportModel] = []
@@ -50,43 +59,59 @@ class HybridEmailDetector:
 
         return (prediction_rag, confidence_rag) if prediction_rag else (prediction_model, confidence_model)
 
-    def _model_analysys(self, subject: str, body: str, metadata: dict):
+    def _model_analysys(self, subject: str, body: str, metadata: dict | None = None):
         """
         self.transformer_model.evaluate()
         self.metadata_model.evaluate()
         :return: prediction and confidence score
         """
 
-        answer_trans = self.transformer_model.predict_email()
-        answer_metad = self.metadata_model.predict()
+        answer_trans = self.transformer_model.predict_email(subject, body)
 
-        prediction, confidence = self._evaluate_models_answers(answer_trans, answer_metad)
+        if metadata is  None:
+            prediction, confidence = self._evaluate_models_answers(answer_trans)
+        else:
+            answer_metad = self.metadata_model.get_prediction_from_dict(metadata)
+
+            prediction, confidence = self._evaluate_models_answers(answer_trans, answer_metad)
 
         return prediction, confidence
 
     def _evaluate_models_answers(self,
         answer_trans: tuple[bool, float],
-        answer_metad: tuple[bool, float],
+        answer_metad: bool = None,
         transformer_weight: float = .8) -> tuple[bool, float]:
 
-        pred_meta, conf_meta = answer_metad
         pred_transformer, conf_transformer = answer_trans
-        meta_weight = 1 - transformer_weight
 
-        vote_meta = (conf_meta if pred_meta else -conf_meta) * meta_weight
-        vote_transformer = (conf_transformer if pred_transformer else -conf_transformer) * transformer_weight
+        # Handle case when answer_metad is None
+        if answer_metad is None:
+            final_pred = pred_transformer
+            final_conf = conf_transformer
+        else:
+            pred_meta = answer_metad
 
-        combined_vote = vote_meta + vote_transformer
+            conf_meta = 1.0
+            meta_weight = 1 - transformer_weight
 
-        final_pred = combined_vote > 0
-        final_conf = min(abs(combined_vote), 1.0)
+            vote_meta = (conf_meta if pred_meta else -conf_meta) * meta_weight
+            vote_transformer = (conf_transformer if pred_transformer else -conf_transformer) * transformer_weight
+
+            combined_vote = vote_meta + vote_transformer
+
+            final_pred = combined_vote > 0
+            final_conf = min(abs(combined_vote), 1.0)
 
         return final_pred, final_conf
 
     def _rag_analysys(self, subject: str, body: str, metadata: dict):
-        prediction, confidence = self.rag_model.classify()
+        prediction, confidence = self.rag_model.classify(subject + body, metadata)
 
         return prediction, confidence
+
+
+if __name__ == "__main__":
+    hybrid_detector = HybridEmailDetector()
 
 
 

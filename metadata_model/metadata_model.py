@@ -1,4 +1,4 @@
-from data_holder import EmailDataset
+from metadata_model.data_holder import EmailDataset
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
