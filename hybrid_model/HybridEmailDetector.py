@@ -1,8 +1,8 @@
 import pandas as pd
 from pathlib import Path
 
-from rag_model.core.SpamDetector import SpamDetector
 from transformer_model.transformer_model import EmailClassifier
+from rag_model.core.SpamDetector import SpamDetector
 from metadata_model.metadata_model_wrapper import MetadataModelWrapper
 import config
 
