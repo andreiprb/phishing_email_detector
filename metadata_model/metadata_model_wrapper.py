@@ -60,8 +60,7 @@ class MetadataModelWrapper:
         """
         with torch.no_grad():
             output = self.model(x)
-            confidence_scores = output.softmax(dim=0)  # Apply softmax to get confidence scores
-            return confidence_scores.squeeze().item()
+            return output.softmax(dim=0).item()
         
     def get_prediction_and_confidence_from_email(self, email: pd.DataFrame) -> Tuple[bool, float]:
         """
