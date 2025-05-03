@@ -250,7 +250,9 @@ class EmailClassifier:
 
 
 if __name__ == "__main__":
-    classifier = EmailClassifier("../trained_models/transformer_model.h5", data_dir="../data/")
+    import config
+
+    classifier = EmailClassifier(str(config.TRANSFORMER_MODEL_PATH), data_dir=str(config.DATASETS_PATH))
 
     subject = "URGENT: You've won $1,000,000"
     body = "Claim your prize now by sending your bank details"

@@ -7,14 +7,16 @@ matplotlib
 #rag pipeline
 llama-index
 llama-index-llms-groq
+llama-index-embeddings-huggingface
 python-dotenv
 
 #transformer model
 tensorflow
+tf_keras
 keras
 
 #metadata model
-pytorch
+torch
 torchvision
 torchinfo
 
