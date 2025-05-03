@@ -7,6 +7,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 import json
 import numpy as np
+import pickle
 
 
 class TransformerBlock(layers.Layer):
@@ -63,9 +64,15 @@ class EmailClassifier:
         self.max_len = max_len
         self.test_df = None
         self.model = None
+        self.vectorizer_adapted = False
 
         if not os.path.exists(model_path):
             print("Modelul nu există. Se încarcă datele și se construiește unul nou...")
+            self.vectorizer = layers.TextVectorization(
+                max_tokens=max_features,
+                output_mode='int',
+                output_sequence_length=max_len
+            )
             if os.path.exists(data_dir):
                 df = self._load_data(data_dir)
                 if df is not None:
@@ -77,27 +84,28 @@ class EmailClassifier:
                 custom_objects={'TransformerBlock': TransformerBlock}
             )
 
-            vectorizer_config_path = model_path.replace('.h5', '_vectorizer_config.json')
-            vectorizer_weights_path = model_path.replace('.h5', '_vectorizer_weights.npz')
+            vectorizer_path = model_path.replace('.h5', '_vectorizer.pkl')
 
-            if os.path.exists(vectorizer_config_path) and os.path.exists(vectorizer_weights_path):
-                with open(vectorizer_config_path, 'r') as f:
-                    vectorizer_config = json.load(f)
+            if os.path.exists(vectorizer_path):
+                with open(vectorizer_path, 'rb') as f:
+                    vectorizer_data = pickle.load(f)
 
-                self.vectorizer = layers.TextVectorization.from_config(vectorizer_config)
-
-                weights_data = np.load(vectorizer_weights_path)
-                weights = [weights_data[key] for key in sorted(weights_data.keys())]
-                self.vectorizer.set_weights(weights)
-                self.vectorizer_adapted = True
-            else:
-                print("Warning: Vectorizer configuration not found. Creating new vectorizer.")
                 self.vectorizer = layers.TextVectorization(
                     max_tokens=max_features,
                     output_mode='int',
                     output_sequence_length=max_len
                 )
-                self.vectorizer_adapted = False
+
+                self.vectorizer.adapt(tf.data.Dataset.from_tensor_slices(["dummy"]).batch(1))
+                self.vectorizer.set_vocabulary(vectorizer_data['vocabulary'])
+                self.vectorizer_adapted = True
+            else:
+                print("Warning: Vectorizer not found. Creating new vectorizer.")
+                self.vectorizer = layers.TextVectorization(
+                    max_tokens=max_features,
+                    output_mode='int',
+                    output_sequence_length=max_len
+                )
 
             if os.path.exists(data_dir):
                 self._load_and_split_data(data_dir, test_size)
@@ -138,12 +146,6 @@ class EmailClassifier:
     def _build_and_train_model(self, df, test_size):
         train_df, self.test_df = train_test_split(df, test_size=test_size, random_state=42)
 
-        self.vectorizer = layers.TextVectorization(
-            max_tokens=self.max_features,
-            output_mode='int',
-            output_sequence_length=self.max_len
-        )
-
         self.vectorizer.adapt(train_df['text'].values)
         self.vectorizer_adapted = True
 
@@ -176,14 +178,11 @@ class EmailClassifier:
         history = self.model.fit(X_train, y_train, batch_size=batch_size, epochs=epochs, validation_split=0.1)
         self.model.save(self.model_path)
 
-        vectorizer_config = self.vectorizer.get_config()
-        vectorizer_weights = self.vectorizer.get_weights()
+        vocabulary = self.vectorizer.get_vocabulary()
+        vectorizer_data = {'vocabulary': vocabulary}
 
-        with open(self.model_path.replace('.h5', '_vectorizer_config.json'), 'w') as f:
-            json.dump(vectorizer_config, f)
-
-        np.savez(self.model_path.replace('.h5', '_vectorizer_weights.npz'),
-                 *vectorizer_weights)
+        with open(self.model_path.replace('.h5', '_vectorizer.pkl'), 'wb') as f:
+            pickle.dump(vectorizer_data, f)
 
         print("Model și vectorizer salvate.")
 
