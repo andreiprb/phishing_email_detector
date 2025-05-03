@@ -5,6 +5,8 @@ import tensorflow as tf
 from keras.api import layers, Model, Sequential, models, losses
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
+import json
+import numpy as np
 
 
 class TransformerBlock(layers.Layer):
@@ -28,9 +30,20 @@ class TransformerBlock(layers.Layer):
         ffn_output = self.dropout2(ffn_output, training=training)
         return self.layernorm2(out1 + ffn_output)
 
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "embed_dim": self.att.key_dim,
+            "num_heads": self.att.num_heads,
+            "ff_dim": self.ffn.layers[0].units,
+            "rate": self.dropout1.rate
+        })
+        return config
+
 
 class EmailClassifier:
-    def __init__(self, model_path="../trained_models/transformer_model.h5", data_dir="../data/", test_size=0.2, max_features=20000,
+    def __init__(self, model_path="../trained_models/transformer_model.h5", data_dir="../data/", test_size=0.2,
+                 max_features=20000,
                  max_len=200):
         tf.random.set_seed(42)
 
@@ -49,6 +62,7 @@ class EmailClassifier:
         self.max_features = max_features
         self.max_len = max_len
         self.test_df = None
+        self.model = None
 
         if not os.path.exists(model_path):
             print("Modelul nu există. Se încarcă datele și se construiește unul nou...")
@@ -63,19 +77,30 @@ class EmailClassifier:
                 custom_objects={'TransformerBlock': TransformerBlock}
             )
 
+            vectorizer_config_path = model_path.replace('.h5', '_vectorizer_config.json')
+            vectorizer_weights_path = model_path.replace('.h5', '_vectorizer_weights.npz')
+
+            if os.path.exists(vectorizer_config_path) and os.path.exists(vectorizer_weights_path):
+                with open(vectorizer_config_path, 'r') as f:
+                    vectorizer_config = json.load(f)
+
+                self.vectorizer = layers.TextVectorization.from_config(vectorizer_config)
+
+                weights_data = np.load(vectorizer_weights_path)
+                weights = [weights_data[key] for key in sorted(weights_data.keys())]
+                self.vectorizer.set_weights(weights)
+                self.vectorizer_adapted = True
+            else:
+                print("Warning: Vectorizer configuration not found. Creating new vectorizer.")
+                self.vectorizer = layers.TextVectorization(
+                    max_tokens=max_features,
+                    output_mode='int',
+                    output_sequence_length=max_len
+                )
+                self.vectorizer_adapted = False
+
             if os.path.exists(data_dir):
                 self._load_and_split_data(data_dir, test_size)
-
-        self.vectorizer = layers.TextVectorization(
-            max_tokens=max_features,
-            output_mode='int',
-            output_sequence_length=max_len
-        )
-
-        self.vectorizer_adapted = False
-
-        if self.test_df is not None and len(self.test_df) > 0:
-            self.adapt_vectorizer(self.test_df['text'].values)
 
     def _load_data(self, data_dir):
         csv_files = [os.path.join(data_dir, file) for file in os.listdir(data_dir) if file.endswith(".csv")]
@@ -113,6 +138,12 @@ class EmailClassifier:
     def _build_and_train_model(self, df, test_size):
         train_df, self.test_df = train_test_split(df, test_size=test_size, random_state=42)
 
+        self.vectorizer = layers.TextVectorization(
+            max_tokens=self.max_features,
+            output_mode='int',
+            output_sequence_length=self.max_len
+        )
+
         self.vectorizer.adapt(train_df['text'].values)
         self.vectorizer_adapted = True
 
@@ -144,7 +175,17 @@ class EmailClassifier:
 
         history = self.model.fit(X_train, y_train, batch_size=batch_size, epochs=epochs, validation_split=0.1)
         self.model.save(self.model_path)
-        print("Model salvat.")
+
+        vectorizer_config = self.vectorizer.get_config()
+        vectorizer_weights = self.vectorizer.get_weights()
+
+        with open(self.model_path.replace('.h5', '_vectorizer_config.json'), 'w') as f:
+            json.dump(vectorizer_config, f)
+
+        np.savez(self.model_path.replace('.h5', '_vectorizer_weights.npz'),
+                 *vectorizer_weights)
+
+        print("Model și vectorizer salvate.")
 
         self.model.summary()
         loss, accuracy = self.model.evaluate(X_test, y_test)
@@ -172,12 +213,12 @@ class EmailClassifier:
         preprocessed_text = self.preprocess_text(text)
 
         if not self.vectorizer_adapted:
-            print("Warning: Vectorizer not adapted. Adapting to the current input only.")
-            self.adapt_vectorizer([preprocessed_text])
+            print("Warning: Vectorizer not adapted. Cannot make predictions.")
+            return False, 0.0
 
         vectorized_text = self.vectorizer([preprocessed_text])
 
-        prediction_prob = self.model.predict(vectorized_text)[0][0]
+        prediction_prob = self.model.predict(vectorized_text, verbose=0)[0][0]
 
         is_spam = bool(prediction_prob > 0.5)
 
@@ -189,8 +230,8 @@ class EmailClassifier:
             return None, None
 
         if not self.vectorizer_adapted:
-            print("Adapting vectorizer to test data...")
-            self.adapt_vectorizer(self.test_df['text'].values)
+            print("Vectorizer not adapted. Cannot evaluate.")
+            return None, None
 
         X_test = self.vectorizer(self.test_df['text'].values)
         y_test = self.test_df['label'].values
@@ -203,7 +244,7 @@ class EmailClassifier:
 
         report = classification_report(y_test, y_pred, digits=4)
 
-        print(f"Loss: {loss:.2f}\nAccuracy: {accuracy:.2f}\n\nClassification Report:\n{report}")
+        print(f"Loss: {loss:.4f}\nAccuracy: {accuracy:.4f}\n\nClassification Report:\n{report}")
 
         return accuracy, report
 
